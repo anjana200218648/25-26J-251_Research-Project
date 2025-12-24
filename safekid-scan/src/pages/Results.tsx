@@ -84,7 +84,7 @@ export default function Results() {
   const reasoning = location.state?.reasoning ?? 'Analysis completed successfully. Consider reviewing the content for any concerning elements.';
   const confidence = location.state?.confidence ?? 0.7;
   const features = location.state?.features ?? ['image_analysis'];
-  const error = location.state?.error; // New error state from backend
+  const error = location.state?.error; 
   
   // Hashtag analysis data with fallbacks
   const hashtagAnalysis = location.state?.hashtagAnalysis ?? {
