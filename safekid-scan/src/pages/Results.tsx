@@ -123,7 +123,7 @@ export default function Results() {
 
   // Debug: Log received data
   useEffect(() => {
-    console.log('📊 Results page received data:', {
+    console.log(' Results page received data:', {
       score,
       fileName,
       prediction,
