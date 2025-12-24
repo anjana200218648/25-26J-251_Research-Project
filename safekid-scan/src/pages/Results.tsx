@@ -197,7 +197,7 @@ export default function Results() {
         console.log('Share cancelled:', error);
       }
     } else {
-      // Fallback for browsers that don't support Web Share API
+      
       navigator.clipboard.writeText(shareText).then(() => {
         alert('Analysis results copied to clipboard!');
       }).catch(() => {
