@@ -121,7 +121,7 @@ export default function Results() {
     riskLevel === 'medium' ? AlertCircle :
     AlertTriangle;
 
-  // Debug: Log received data
+  
   useEffect(() => {
     console.log(' Results page received data:', {
       score,
