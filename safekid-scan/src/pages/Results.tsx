@@ -84,7 +84,7 @@ export default function Results() {
   const reasoning = location.state?.reasoning ?? 'Analysis completed successfully. Consider reviewing the content for any concerning elements.';
   const confidence = location.state?.confidence ?? 0.7;
   const features = location.state?.features ?? ['image_analysis'];
-  const error = location.state?.error; // New error state from backend
+  const error = location.state?.error; 
   
   // Hashtag analysis data with fallbacks
   const hashtagAnalysis = location.state?.hashtagAnalysis ?? {
@@ -121,9 +121,9 @@ export default function Results() {
     riskLevel === 'medium' ? AlertCircle :
     AlertTriangle;
 
-  // Debug: Log received data
+  
   useEffect(() => {
-    console.log('📊 Results page received data:', {
+    console.log(' Results page received data:', {
       score,
       fileName,
       prediction,
@@ -197,7 +197,7 @@ export default function Results() {
         console.log('Share cancelled:', error);
       }
     } else {
-      // Fallback for browsers that don't support Web Share API
+      
       navigator.clipboard.writeText(shareText).then(() => {
         alert('Analysis results copied to clipboard!');
       }).catch(() => {
