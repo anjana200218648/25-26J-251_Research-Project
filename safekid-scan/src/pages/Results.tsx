@@ -1805,7 +1805,7 @@ export default function Results() {
             </div>
           </Card>
 
-          {/* Action Buttons */}
+          
           <div className="grid gap-3 sm:grid-cols-2">
             <Button
               variant="outline"
