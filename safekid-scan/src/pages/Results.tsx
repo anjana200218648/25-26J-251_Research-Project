@@ -1741,7 +1741,7 @@ export default function Results() {
                   );
                 }
                 
-                // Fallback for addictive content
+                
                 if (prediction === 'addictive') {
                   return (
                     <div className="space-y-4 p-4 rounded-lg border border-orange-200 bg-orange-50">
