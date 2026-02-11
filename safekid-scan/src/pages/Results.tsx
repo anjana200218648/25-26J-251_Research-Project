@@ -1849,7 +1849,7 @@ export default function Results() {
             </Button>
           </div>
 
-          {/* Privacy Notice */}
+         
           <p className="text-center text-sm text-gray-500">
             {t.privacy?.notice || 'Your privacy is protected. All analysis is performed securely.'}
           </p>
