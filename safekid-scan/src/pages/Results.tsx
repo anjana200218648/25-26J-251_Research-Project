@@ -1515,7 +1515,7 @@ export default function Results() {
             </h3>
             
             <div className="space-y-6">
-              {/* Category Detection Logic */}
+              
               {(() => {
                 const categoryPath = contentCategoryAnalysis?.category_hierarchy || "";
                 
