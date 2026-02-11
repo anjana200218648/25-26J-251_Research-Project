@@ -1579,7 +1579,7 @@ export default function Results() {
                   );
                 }
                 
-                // Check for Explicit Harmful
+                
                 if (categoryPath.includes("explicit_harmful") || 
                     categoryPath.includes("Explicit") ||
                     categoryPath.includes("explicit")) {
