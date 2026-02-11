@@ -1525,7 +1525,7 @@ export default function Results() {
                   confidence
                 });
 
-                // Check for Visual Addiction
+                
                 if (categoryPath.includes("Visual_addiction") || 
                     categoryPath.includes("Visual") ||
                     categoryPath.includes("visual")) {
