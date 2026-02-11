@@ -1633,7 +1633,7 @@ export default function Results() {
                   );
                 }
                 
-                // Check for Psychological Triggers
+                
                 if (categoryPath.includes("Psychological_triggers") || 
                     categoryPath.includes("psychological_triggers") ||
                     categoryPath.includes("Psychological")) {
