@@ -1793,7 +1793,7 @@ export default function Results() {
                   );
                 }
                 
-                // Default fallback
+                
                 return (
                   <div className="text-center text-gray-500 p-8">
                     <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
