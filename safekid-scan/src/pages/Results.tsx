@@ -1507,7 +1507,7 @@ export default function Results() {
             </Card>
           )}
 
-          {/* Category-Specific Recommendations */}
+          
           <Card className="p-6 border shadow-sm">
             <h3 className="text-xl font-semibold mb-4 text-gray-900 flex items-center gap-2">
               <Shield className="h-5 w-5 text-blue-600" />
