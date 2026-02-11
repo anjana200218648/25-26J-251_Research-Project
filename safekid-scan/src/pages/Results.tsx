@@ -1687,7 +1687,7 @@ export default function Results() {
                   );
                 }
                 
-                // Non-addictive content
+                
                 if (prediction === 'non-addictive' || 
                     categoryPath.includes("Non-addictive") ||
                     categoryPath.includes("non-addictive")) {
