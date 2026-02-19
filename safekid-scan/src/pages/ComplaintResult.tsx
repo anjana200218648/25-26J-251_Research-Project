@@ -14,7 +14,6 @@ import {
   Download,
   MessageSquare,
   Brain,
-  RotateCcw,
   ArrowLeft,
   Shield,
   TrendingUp,
@@ -953,20 +952,11 @@ const ComplaintResult = () => {
 
             <Button
               variant="outline"
-              onClick={() => navigate('/complaint-form')}
-              className="flex items-center gap-2 border-2 border-blue-200 hover:border-blue-600 hover:bg-blue-600 hover:text-white text-blue-700 font-semibold px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300 rounded-lg w-[320px]"
-            >
-              <RotateCcw className="h-5 w-5" />
-              <span>New Assessment</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/upload')}
               className="flex items-center gap-2 border-2 border-blue-200 hover:border-blue-600 hover:bg-blue-600 hover:text-white text-blue-700 font-semibold px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300 rounded-lg w-[320px]"
             >
               <Home className="h-5 w-5" />
-              <span>Dashboard</span>
+              <span>Upload New Image</span>
             </Button>
           </div>
 

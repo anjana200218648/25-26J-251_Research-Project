@@ -1,58 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Upload as UploadIcon, FileImage, X } from 'lucide-react';
+import { Upload as UploadIcon, FileImage, X, Sparkles, Brain, Shield, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import uploadPlaceholder from '@/assets/upload-placeholder.png';
-import { ConsentDialog } from '@/components/ConsentDialog';
 import { API_CONFIG } from '@/config/api';
-
-const formSchema = z.object({
-  childName: z.string().min(1, 'required').max(100),
-  age: z.number().min(1).max(18),
-  guardianName: z.string().min(1, 'required').max(100),
-  guardianPhone: z.string().min(10, 'invalidPhone').max(15),
-  region: z.string().optional(),
-  happiness: z.string().max(500).optional(),
-});
-
-type FormData = z.infer<typeof formSchema>;
 
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [isConsentOpen, setIsConsentOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const navigate = useNavigate();
   const { t } = useLanguage();
-
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-  });
-
-  const age = watch('age');
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -112,28 +74,18 @@ export default function Upload() {
     setPreview(null);
   };
 
-  const onSubmit = (data: FormData) => {
+  const handleUploadAndScan = async () => {
     if (!file) {
       toast.error(t.errors.noFile);
       return;
     }
-    setIsConsentOpen(true);
-  };
 
-  const handleConsentConfirm = async () => {
-    setIsConsentOpen(false);
     setIsUploading(true);
 
     try {
       const formData = new FormData();
       if (file) {
         formData.append('image', file);
-        
-        // Add form data to the request
-        const formValues = watch();
-        Object.entries(formValues).forEach(([key, value]) => {
-          if (value) formData.append(key, value.toString());
-        });
       }
 
       const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ANALYZE}`;
@@ -154,14 +106,41 @@ export default function Upload() {
       
       console.log('✅ Backend result received:', result);
       
-      // Navigate to results with ALL analysis data from backend
+      // ✅ FIXED: සම්පූර්ණ data object එකක් සාදන්න
       const navigationState = {
+        // ප්‍රධාන score data
         score: result.score || 50,
         fileName: result.fileName || file?.name || 'unknown.png',
         prediction: result.prediction || 'non-addictive',
         reasoning: result.reasoning || 'Analysis completed successfully.',
         confidence: result.confidence || 0.7,
         features: result.features || ['image_analysis', 'hashtag_analysis', 'text_extraction'],
+        
+        // ✅ Text Analysis Data (Results.tsx එහි ඇති ලෙසම)
+        textAnalysisResult: result.textAnalysisResult || null,
+        extractedText: result.extractedText || '',
+        sinhalaText: result.sinhalaText || '',
+        englishText: result.englishText || '',
+        ocrConfidence: result.ocrConfidence || 0,
+        safetyScore: result.safetyScore || 0,
+        ageAppropriateness: result.ageAppropriateness || 'unknown',
+        riskCategories: result.riskCategories || [],
+        safetyRecommendations: result.safetyRecommendations || [],
+        contentAnalysis: result.contentAnalysis || {},
+        
+        // ✅ Content Category Analysis
+        contentCategoryAnalysis: result.contentCategoryAnalysis || {
+          detected_items: [],
+          primary_category: null,
+          category_hierarchy: 'Unknown',
+          addictive_count: 0,
+          non_addictive_count: 0,
+          total_categories_found: 0,
+          folder_structure_mapped: false,
+          prediction_based: false
+        },
+        
+        // ✅ Hashtag Analysis
         hashtagAnalysis: result.hashtagAnalysis || {
           total_hashtags: 0,
           addictive_hashtags: 0,
@@ -170,11 +149,18 @@ export default function Upload() {
           addictive_percentage: 0,
           analysis_method: 'none'
         },
-        extractedText: result.extractedText || '',
-        extractedHashtags: result.extractedHashtags || []
+        
+        extractedHashtags: result.extractedHashtags || [],
+        
+        // ✅ Error if exists
+        error: result.error || null,
+        message: result.message || null
       };
 
       console.log('🚀 Navigating to results with state:', navigationState);
+      
+      // ✅ FIXED: Save to sessionStorage as backup
+      sessionStorage.setItem('analysisData', JSON.stringify(navigationState));
       
       // Navigate to results page
       navigate('/results', {
@@ -185,27 +171,129 @@ export default function Upload() {
       console.error('❌ Upload failed:', error);
       toast.error(t.errors.scanFailed || 'Analysis failed. Please try again.');
       
-      // Fallback to mock data if backend fails
+      // ✅ FIXED: Include ALL data in fallback state
       const mockScore = Math.floor(Math.random() * 100);
-      navigate('/results', {
-        state: {
-          score: mockScore,
-          fileName: file?.name,
-          prediction: mockScore > 50 ? 'addictive' : 'non-addictive',
-          reasoning: 'Backend connection failed. Using mock data.',
-          confidence: Math.random() * 0.3 + 0.7,
-          features: ['image_analysis'],
-          hashtagAnalysis: {
-            total_hashtags: 0,
-            addictive_hashtags: 0,
-            safe_hashtags: 0,
-            hashtag_details: [],
-            addictive_percentage: 0,
-            analysis_method: 'none'
+      const fallbackState = {
+        score: mockScore,
+        fileName: file?.name || 'uploaded_image.jpg',
+        prediction: mockScore > 50 ? 'addictive' : 'non-addictive',
+        reasoning: 'Backend connection failed. Using mock data for demonstration.',
+        confidence: Math.random() * 0.3 + 0.7,
+        features: ['image_analysis', 'text_extraction', 'hashtag_analysis', 'category_analysis'],
+        
+        // ✅ Text Analysis Data
+        textAnalysisResult: {
+          original_text: "This is sample extracted text for demonstration.",
+          sinhala: { 
+            text: "මෙය නිදර්ශනය සඳහා උපුටා ගත් සාම්පල පෙළකි.", 
+            confidence: 85, 
+            word_count: 8, 
+            character_count: 50 
           },
-          extractedText: '',
-          extractedHashtags: []
-        }
+          english: { 
+            text: "This is sample extracted text for demonstration.", 
+            confidence: 92, 
+            word_count: 8, 
+            character_count: 50 
+          },
+          ocr_confidence: 88,
+          safety_score: 75,
+          age_appropriateness: 'safe',
+          content_analysis: {
+            risk_level: 'low',
+            explanation: 'Content appears to be safe for children.',
+            risk_categories: [],
+            recommendations: [
+              'Monitor screen time',
+              'Encourage educational content',
+              'Discuss online safety with child'
+            ],
+            confidence: 0.85
+          },
+          processing_time: 2.5
+        },
+        extractedText: "This is sample extracted text for demonstration.",
+        sinhalaText: "මෙය නිදර්ශනය සඳහා උපුටා ගත් සාම්පල පෙළකි.",
+        englishText: "This is sample extracted text for demonstration.",
+        ocrConfidence: 88,
+        safetyScore: 75,
+        ageAppropriateness: 'safe',
+        riskCategories: [],
+        safetyRecommendations: [
+          'Monitor screen time',
+          'Encourage educational content',
+          'Discuss online safety with child'
+        ],
+        contentAnalysis: {
+          risk_level: 'low',
+          explanation: 'Content appears to be safe for children.',
+          risk_categories: [],
+          recommendations: [
+            'Monitor screen time',
+            'Encourage educational content',
+            'Discuss online safety with child'
+          ],
+          confidence: 0.85
+        },
+        
+        // ✅ Content Category Analysis
+        contentCategoryAnalysis: {
+          detected_items: [
+            {
+              content_type: 'educational',
+              main_category: 'Non-addictive Content',
+              detected_keyword: 'model_prediction',
+              confidence: 0.78
+            },
+            {
+              content_type: 'informational',
+              main_category: 'Non-addictive Content',
+              detected_keyword: 'possible_match',
+              confidence: 0.65
+            }
+          ],
+          primary_category: {
+            content_type: 'educational',
+            main_category: 'Non-addictive Content',
+            detected_keyword: 'model_prediction',
+            confidence: 0.78
+          },
+          category_hierarchy: 'Non-addictive Content → Educational',
+          addictive_count: 0,
+          non_addictive_count: 2,
+          total_categories_found: 2,
+          folder_structure_mapped: true,
+          prediction_based: true
+        },
+        
+        // ✅ Hashtag Analysis
+        hashtagAnalysis: {
+          total_hashtags: 5,
+          addictive_hashtags: 1,
+          safe_hashtags: 4,
+          hashtag_details: [
+            { hashtag: 'education', is_addictive: false, method: 'rule-based', prediction: 'safe', confidence: 0.9 },
+            { hashtag: 'learning', is_addictive: false, method: 'rule-based', prediction: 'safe', confidence: 0.85 },
+            { hashtag: 'kids', is_addictive: false, method: 'rule-based', prediction: 'safe', confidence: 0.8 },
+            { hashtag: 'parenting', is_addictive: false, method: 'rule-based', prediction: 'safe', confidence: 0.88 },
+            { hashtag: 'gaming', is_addictive: true, method: 'ml-model', prediction: 'addictive', confidence: 0.75 }
+          ],
+          addictive_percentage: 20,
+          analysis_method: 'hybrid'
+        },
+        
+        extractedHashtags: ['education', 'learning', 'kids', 'parenting', 'gaming'],
+        
+        error: null,
+        message: 'Using mock data due to backend connection failure'
+      };
+      
+      // ✅ Save fallback to sessionStorage too
+      sessionStorage.setItem('analysisData', JSON.stringify(fallbackState));
+      
+      // Navigate with fallback data
+      navigate('/results', {
+        state: fallbackState
       });
     } finally {
       setIsUploading(false);
@@ -215,6 +303,93 @@ export default function Upload() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
+      
+      {/* Loading Overlay */}
+      {isUploading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="relative">
+            {/* Animated background */}
+            <div className="absolute inset-0 -z-10">
+              <div className="absolute top-1/4 left-1/4 h-64 w-64 animate-pulse rounded-full bg-primary/10 blur-3xl" />
+              <div className="absolute bottom-1/4 right-1/4 h-64 w-64 animate-pulse rounded-full bg-secondary/10 blur-3xl" />
+            </div>
+            
+            {/* Main loading container */}
+            <div className="relative flex flex-col items-center justify-center space-y-8">
+              {/* Animated circles */}
+              <div className="relative h-48 w-48">
+                <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+                <div className="absolute inset-4 animate-spin rounded-full border-4 border-secondary/20 border-t-secondary" style={{ animationDirection: 'reverse', animationDuration: '2s' }} />
+                <div className="absolute inset-8 animate-spin rounded-full border-4 border-accent/20 border-t-accent" style={{ animationDuration: '1.5s' }} />
+                
+                {/* Central icon */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="relative">
+                    <Brain className="h-16 w-16 animate-pulse text-primary" />
+                    <Sparkles className="absolute -right-2 -top-2 h-8 w-8 animate-bounce text-yellow-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress indicators */}
+              <div className="text-center space-y-4 max-w-md">
+                <h2 className="text-2xl font-bold text-foreground">Analyzing Content</h2>
+                <p className="text-muted-foreground">We're scanning for potential addictive elements...</p>
+                
+                {/* Progress steps */}
+                <div className="flex items-center justify-center space-x-8 pt-4">
+                  <div className="flex flex-col items-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                      <Eye className="h-6 w-6 text-primary animate-pulse" />
+                    </div>
+                    <p className="mt-2 text-sm font-medium">Image Analysis</p>
+                  </div>
+                  
+                  <div className="h-0.5 w-8 bg-primary/20">
+                    <div className="h-full w-0 animate-[progress_1s_ease-in-out_infinite] bg-primary" />
+                  </div>
+                  
+                  <div className="flex flex-col items-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/10">
+                      <Brain className="h-6 w-6 text-secondary animate-pulse" style={{ animationDelay: '0.2s' }} />
+                    </div>
+                    <p className="mt-2 text-sm font-medium">AI Processing</p>
+                  </div>
+                  
+                  <div className="h-0.5 w-8 bg-secondary/20">
+                    <div className="h-full w-0 animate-[progress_1s_ease-in-out_infinite] bg-secondary" style={{ animationDelay: '0.2s' }} />
+                  </div>
+                  
+                  <div className="flex flex-col items-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/10">
+                      <Shield className="h-6 w-6 text-accent animate-pulse" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                    <p className="mt-2 text-sm font-medium">Safety Check</p>
+                  </div>
+                </div>
+
+                {/* Loading dots */}
+                <div className="flex justify-center space-x-2 pt-6">
+                  <div className="h-3 w-3 animate-bounce rounded-full bg-primary" />
+                  <div className="h-3 w-3 animate-bounce rounded-full bg-secondary" style={{ animationDelay: '0.1s' }} />
+                  <div className="h-3 w-3 animate-bounce rounded-full bg-accent" style={{ animationDelay: '0.2s' }} />
+                </div>
+
+                {/* Percentage */}
+                <div className="pt-4">
+                  <div className="h-2 w-64 overflow-hidden rounded-full bg-muted">
+                    <div 
+                      className="h-full w-0 animate-[loading_2s_ease-in-out_infinite] bg-gradient-to-r from-primary via-secondary to-accent"
+                      style={{ animationDuration: '3s' }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">Processing your content...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="space-y-8 animate-fade-in">
@@ -289,116 +464,25 @@ export default function Upload() {
             )}
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-6">
-              <h2 className="text-xl font-semibold text-foreground">
-                {t.form.childName.split("'")[0]} Information
-              </h2>
-              
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="childName">{t.form.childName}</Label>
-                  <Input
-                    id="childName"
-                    {...register('childName')}
-                    placeholder={t.form.childNamePlaceholder}
-                    className={errors.childName ? 'border-destructive' : ''}
-                  />
-                  {errors.childName && (
-                    <p className="text-sm text-destructive">{t.form.required}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="age">{t.form.age}</Label>
-                  <Select
-                    value={age?.toString()}
-                    onValueChange={(value) => setValue('age', parseInt(value))}
-                  >
-                    <SelectTrigger className={errors.age ? 'border-destructive' : ''}>
-                      <SelectValue placeholder={t.form.agePlaceholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 9 }, (_, i) => i + 10).map((num) => (
-                        <SelectItem key={num} value={num.toString()}>
-                          {num}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.age && (
-                    <p className="text-sm text-destructive">{t.form.invalidAge}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guardianName">{t.form.guardianName}</Label>
-                  <Input
-                    id="guardianName"
-                    {...register('guardianName')}
-                    placeholder={t.form.guardianNamePlaceholder}
-                    className={errors.guardianName ? 'border-destructive' : ''}
-                  />
-                  {errors.guardianName && (
-                    <p className="text-sm text-destructive">{t.form.required}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guardianPhone">{t.form.guardianPhone}</Label>
-                  <Input
-                    id="guardianPhone"
-                    type="tel"
-                    {...register('guardianPhone')}
-                    placeholder={t.form.guardianPhonePlaceholder}
-                    className={errors.guardianPhone ? 'border-destructive' : ''}
-                  />
-                  {errors.guardianPhone && (
-                    <p className="text-sm text-destructive">{t.form.invalidPhone}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="region">{t.form.region}</Label>
-                  <Input
-                    id="region"
-                    {...register('region')}
-                    placeholder={t.form.regionPlaceholder}
-                  />
-                </div>
-
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="happiness">{t.form.happiness}</Label>
-                  <Textarea
-                    id="happiness"
-                    {...register('happiness')}
-                    placeholder={t.form.happinessPlaceholder}
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full gap-2 bg-primary hover:bg-primary-hover"
-              disabled={isUploading}
-            >
-              {isUploading ? (
-                <>
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  {t.upload.uploading}
-                </>
-              ) : (
-                <>
-                  <UploadIcon className="h-5 w-5" />
-                  {t.form.submit}
-                </>
-              )}
-            </Button>
-          </form>
+          <Button
+            type="button"
+            size="lg"
+            onClick={handleUploadAndScan}
+            className="w-full gap-2 bg-primary hover:bg-primary-hover"
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <>
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                {t.upload.uploading}
+              </>
+            ) : (
+              <>
+                <UploadIcon className="h-5 w-5" />
+                Upload and Scan
+              </>
+            )}
+          </Button>
 
           {/* Privacy Notice */}
           <p className="text-center text-sm text-muted-foreground">
@@ -406,12 +490,6 @@ export default function Upload() {
           </p>
         </div>
       </main>
-
-      <ConsentDialog
-        isOpen={isConsentOpen}
-        onClose={() => setIsConsentOpen(false)}
-        onConfirm={handleConsentConfirm}
-      />
     </div>
   );
 }
