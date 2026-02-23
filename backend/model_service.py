@@ -21,6 +21,7 @@ RETRY_DELAY = 5     # Base delay between retries (seconds)
 
 LABEL_ORDER = ["Low", "Medium", "High"]
 
+# Only TRUE numeric features (6 features)
 NUMERIC_FEATURE_ORDER = [
     "age_of_child",
     "hours_per_day_on_social_media",
@@ -28,13 +29,25 @@ NUMERIC_FEATURE_ORDER = [
     "risk_word_count",
     "text_length",
     "risk_ratio",
-    "child_gender_encoded",
-    "reporter_role_encoded",
-    "device_type_encoded",
+]
+
+# Categorical features handled separately (3 features)
+CATEGORICAL_FEATURE_ORDER = [
+    "child_gender",
+    "reporter_role",
+    "device_type",
 ]
 
 # Get the trained model directory
 TRAINED_DIR = os.path.join(os.path.dirname(__file__), "trained_model")
+
+# Validate trained model directory exists
+if not os.path.exists(TRAINED_DIR):
+    print(f"[WARNING] Trained model directory not found: {TRAINED_DIR}")
+    print(f"[WARNING] Please ensure the 'trained_model' folder exists in the backend directory")
+
+MODEL_FILE_CANDIDATES = ["model.pt", "classifier_head.pt"]
+ENCODER_FILE_CANDIDATES = ["encoders.json", "label_encoders.json"]
 
 # Emoji pattern for text preprocessing
 EMOJI_PATTERN = re.compile(
@@ -183,142 +196,155 @@ def load_model_with_retry(model_name: str, is_tokenizer: bool = False, max_retri
     """
     for attempt in range(max_retries):
         try:
-            print(f"Attempting to load {'tokenizer' if is_tokenizer else 'model'} '{model_name}' (attempt {attempt + 1}/{max_retries})...")
-            
             # First try to load from local cache
             try:
                 if is_tokenizer:
                     result = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
                 else:
                     result = AutoModel.from_pretrained(model_name, local_files_only=True)
-                print(f"Successfully loaded {'tokenizer' if is_tokenizer else 'model'} '{model_name}' from local cache")
                 return result
             except Exception:
-                print(f"Local cache miss for {model_name}, attempting to download...")
+                pass
             
             # Load with extended timeout
             if is_tokenizer:
-                # Set environment variable for Hugging Face timeout
                 os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = str(MODEL_TIMEOUT)
                 result = AutoTokenizer.from_pretrained(model_name, local_files_only=False)
             else:
                 os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = str(MODEL_TIMEOUT)
                 result = AutoModel.from_pretrained(model_name, local_files_only=False)
             
-            print(f"Successfully loaded {'tokenizer' if is_tokenizer else 'model'} '{model_name}'")
-            return result
-            
         except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {str(e)}")
             if attempt < max_retries - 1:
-                delay = RETRY_DELAY * (2 ** attempt)  # Exponential backoff
-                print(f"Retrying in {delay} seconds...")
+                delay = RETRY_DELAY * (2 ** attempt)
                 time.sleep(delay)
             else:
-                print(f" All {max_retries} attempts failed to load {model_name}")
                 return None
     
     return None
 
 class MultimodalClassifier(nn.Module):
-    """Multimodal classifier supporting legacy and enhanced architectures."""
+    """
+    Simplified Multimodal Classifier - Single Architecture
+    
+    Architecture:
+    - Text: RoBERTa base model (768 dims)
+    - Numeric: 6 features → MLP(64) → MLP(32)
+    - Categorical: 3 features → Embeddings(8 dims each)
+    - Fusion: Multi-head attention (4 heads)
+    - Classifier: Linear(256) → Linear(3)
+    """
 
     def __init__(
         self,
         base_model_name: str,
-        num_additional_features: int,
+        num_additional_features: int,  # Total: numeric + categorical
         hidden_dropout_prob: float = 0.1,
-        architecture_type: str = "legacy",
         num_numeric: int = 6,
         categorical_cardinalities: Optional[List[int]] = None,
     ):
         super(MultimodalClassifier, self).__init__()
 
-        print(f"Loading base model: {base_model_name}")
+        # Load base transformer model
         self.base = load_model_with_retry(base_model_name, is_tokenizer=False)
         if self.base is None:
-            print(f"Primary base model failed, trying fallback: {ALTERNATIVE_MODEL_NAME}")
             self.base = load_model_with_retry(ALTERNATIVE_MODEL_NAME, is_tokenizer=False)
             if self.base is None:
                 raise Exception(f"Failed to load both primary ({base_model_name}) and fallback ({ALTERNATIVE_MODEL_NAME}) models")
-            print(f"Successfully loaded fallback base model: {ALTERNATIVE_MODEL_NAME}")
-        else:
-            print(f"Primary base model loaded successfully: {base_model_name}")
 
-        hidden_size = self.base.config.hidden_size
-        self.architecture_type = architecture_type
+        hidden_size = self.base.config.hidden_size  # 768 for RoBERTa
         self.num_numeric = num_numeric
         self.dropout = nn.Dropout(hidden_dropout_prob)
 
-        if architecture_type == "enhanced_multimodal_v2":
-            if categorical_cardinalities is None:
-                categorical_cardinalities = [2, 3, 4]
+        # Default categorical cardinalities if not provided
+        if categorical_cardinalities is None:
+            categorical_cardinalities = [2, 3, 3]  # [gender, role, device]
 
-            self.numeric_mlp = nn.Sequential(
-                nn.Linear(self.num_numeric, 64),
-                nn.ReLU(),
-                nn.Dropout(hidden_dropout_prob),
-                nn.Linear(64, 32),
-                nn.ReLU(),
-            )
+        # Numeric features MLP (6 → 64 → 32)
+        self.numeric_mlp = nn.Sequential(
+            nn.Linear(self.num_numeric, 64),
+            nn.ReLU(),
+            nn.BatchNorm1d(64),
+            nn.Dropout(0.3),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+        )
 
-            embedding_dim = 8
-            self.categorical_embeddings = nn.ModuleList(
-                [nn.Embedding(max(2, int(size)), embedding_dim) for size in categorical_cardinalities]
-            )
+        # Categorical embeddings (3 features, 8 dims each)
+        self.embeddings = nn.ModuleList(
+            [nn.Embedding(max(2, int(size)), 8) for size in categorical_cardinalities]
+        )
 
-            categorical_total_dim = embedding_dim * len(self.categorical_embeddings)
-            fusion_dim = hidden_size + 32 + categorical_total_dim
-            self.classifier = nn.Sequential(
-                nn.Linear(fusion_dim, 512),
-                nn.GELU(),
-                nn.Dropout(hidden_dropout_prob),
-                nn.Linear(512, 128),
-                nn.GELU(),
-                nn.Dropout(hidden_dropout_prob),
-                nn.Linear(128, 3),
-            )
-        else:
-            combined_size = hidden_size + num_additional_features
-            self.classifier = nn.Sequential(
-                nn.Linear(combined_size, combined_size // 2),
-                nn.ReLU(),
-                nn.Dropout(hidden_dropout_prob),
-                nn.Linear(combined_size // 2, 3),
-            )
+        # Fusion dimension: text(768) + numeric(32) + categorical(24)
+        fusion_dim = hidden_size + 32 + (8 * len(self.embeddings))
+
+        # Multi-head attention for feature fusion
+        self.fusion_attention = nn.MultiheadAttention(
+            embed_dim=fusion_dim,
+            num_heads=4,
+            batch_first=True,
+        )
+
+        # Final classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(fusion_dim, 256),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 3),  # Low, Medium, High
+        )
 
     def forward(self, input_ids=None, attention_mask=None, additional_features=None, labels=None):
+        """
+        Forward pass
+        
+        Args:
+            input_ids: Tokenized text
+            attention_mask: Attention mask
+            additional_features: [numeric(6), categorical(3)] = 9 features
+            labels: Optional labels for training
+        """
+        # Get text representation from RoBERTa
         base_out = self.base(input_ids=input_ids, attention_mask=attention_mask)
-        pooled = base_out.last_hidden_state[:, 0, :]
+        pooled = base_out.last_hidden_state[:, 0, :]  # [CLS] token
 
         if additional_features is None:
             additional_features = torch.zeros((pooled.size(0), 0), device=pooled.device)
 
-        if self.architecture_type == "enhanced_multimodal_v2":
-            numeric = additional_features[:, :self.num_numeric]
-            categorical = additional_features[:, self.num_numeric:].long()
+        # Split numeric and categorical features
+        numeric = additional_features[:, :self.num_numeric]  # First 6
+        categorical = additional_features[:, self.num_numeric:].long()  # Last 3
 
-            numeric_repr = self.numeric_mlp(numeric)
+        # Process numeric through MLP
+        numeric_repr = self.numeric_mlp(numeric)
 
-            embedded = []
-            for i, emb in enumerate(self.categorical_embeddings):
-                if i < categorical.size(1):
-                    cat_ids = categorical[:, i].clamp(min=0, max=emb.num_embeddings - 1)
-                else:
-                    cat_ids = torch.zeros((categorical.size(0),), dtype=torch.long, device=categorical.device)
-                embedded.append(emb(cat_ids))
-            categorical_repr = torch.cat(embedded, dim=1) if embedded else torch.zeros((pooled.size(0), 0), device=pooled.device)
+        # Process categorical through embeddings
+        cat_embs = []
+        for i, emb in enumerate(self.embeddings):
+            if i < categorical.size(1):
+                cat_ids = categorical[:, i].clamp(min=0, max=emb.num_embeddings - 1)
+            else:
+                cat_ids = torch.zeros((categorical.size(0),), dtype=torch.long, device=categorical.device)
+            cat_embs.append(emb(cat_ids))
 
-            x = torch.cat([pooled, numeric_repr, categorical_repr], dim=1)
-        else:
-            x = torch.cat([pooled, additional_features], dim=1)
+        cat_repr = torch.cat(cat_embs, dim=1) if cat_embs else torch.zeros((pooled.size(0), 0), device=pooled.device)
 
+        # Fuse all representations: text + numeric + categorical
+        fused = torch.cat([pooled, numeric_repr, cat_repr], dim=1).unsqueeze(1)
+
+        # Apply attention fusion
+        attn_out, _ = self.fusion_attention(fused, fused, fused)
+        x = attn_out.squeeze(1)
+
+        # Apply dropout and classifier
         x = self.dropout(x)
         logits = self.classifier(x)
+
+        # Calculate loss if labels provided
         loss = None
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, 3), labels.view(-1))
+
         return {"loss": loss, "logits": logits}
 
 class ModelService:
@@ -331,13 +357,40 @@ class ModelService:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.label_order = LABEL_ORDER
         self._loaded = False
+        # Add normalization parameters
+        self.numeric_mean = None
+        self.numeric_std = None
     
     def load_model(self):
         """Load the trained model and encoders with robust timeout handling"""
         global BASE_MODEL_NAME
+
+        def _infer_num_numeric(state_dict: Dict[str, torch.Tensor], default: int) -> int:
+            """Infer number of numeric features from numeric_mlp layer"""
+            for key in ["numeric_mlp.0.weight", "numeric_mlp.0.bias"]:
+                if key in state_dict:
+                    tensor = state_dict[key]
+                    if hasattr(tensor, "shape") and len(tensor.shape) >= 2:
+                        return int(tensor.shape[1])
+            return default
+
+        def _infer_cardinalities(state_dict: Dict[str, torch.Tensor]) -> Optional[List[int]]:
+            """Infer categorical cardinalities from embedding layers"""
+            cardinalities = []
+            index = 0
+            while True:
+                key = f"embeddings.{index}.weight"
+                if key not in state_dict:
+                    break
+                weight = state_dict[key]
+                if hasattr(weight, "shape") and len(weight.shape) == 2:
+                    cardinalities.append(int(weight.shape[0]))
+                index += 1
+            
+            return cardinalities if cardinalities else None
         
         try:
-            print(f"Loading model from: {TRAINED_DIR}")
+            print(f"[INFO] Loading model from: {TRAINED_DIR}")
 
             # Load metadata if present
             metadata_path = os.path.join(TRAINED_DIR, 'metadata.json')
@@ -345,38 +398,85 @@ class ModelService:
                 with open(metadata_path, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
                 self.label_order = metadata.get('label_order', LABEL_ORDER)
-                if metadata.get('base_model_name'):
-                    BASE_MODEL_NAME = metadata['base_model_name']
+                
+                # Load normalization parameters if available
+                self.numeric_mean = metadata.get('numeric_mean')
+                self.numeric_std = metadata.get('numeric_std')
             else:
                 metadata = {}
 
-            architecture_type = metadata.get('architecture_type', 'legacy')
+            base_model_name = metadata.get('base_model_name')
+
+            selected_model_path = None
+            for file_name in MODEL_FILE_CANDIDATES:
+                path = os.path.join(TRAINED_DIR, file_name)
+                if os.path.exists(path):
+                    selected_model_path = path
+                    break
+
+            if base_model_name:
+                BASE_MODEL_NAME = base_model_name
+            elif selected_model_path and os.path.basename(selected_model_path) == "model.pt":
+                BASE_MODEL_NAME = ALTERNATIVE_MODEL_NAME
+
+            # Start with defaults from metadata
             num_numeric = int(metadata.get('num_numeric', 6))
             categorical_cardinalities = metadata.get('categorical_cardinalities')
             if not isinstance(categorical_cardinalities, list):
                 categorical_cardinalities = None
+            
+            # Try to infer parameters from checkpoint (overrides metadata)
+            if selected_model_path and os.path.exists(selected_model_path):
+                try:
+                    temp_state = torch.load(selected_model_path, map_location='cpu')
+                    
+                    # Extract state_dict for inspection
+                    state_dict_to_check = None
+                    if isinstance(temp_state, dict):
+                        if 'model_state_dict' in temp_state:
+                            state_dict_to_check = temp_state['model_state_dict']
+                            # Also get metadata from checkpoint if available
+                            if 'num_numeric' in temp_state:
+                                num_numeric = int(temp_state['num_numeric'])
+                            if 'categorical_cardinalities' in temp_state:
+                                categorical_cardinalities = temp_state['categorical_cardinalities']
+                        else:
+                            # Might be a raw state_dict
+                            state_dict_to_check = temp_state
+                    
+                    # Infer parameters from state_dict if available
+                    if state_dict_to_check:
+                        # Infer num_numeric from numeric_mlp layer
+                        num_numeric = _infer_num_numeric(state_dict_to_check, num_numeric)
+                        
+                        # Infer categorical cardinalities from embedding layers
+                        inferred_cards = _infer_cardinalities(state_dict_to_check)
+                        if inferred_cards:
+                            categorical_cardinalities = inferred_cards
+                    
+                    del temp_state  # Free memory
+                except Exception as e:
+                    print(f"[WARN] Could not pre-inspect model checkpoint: {e}")
 
             # Load tokenizer with retry logic
-            print("Loading tokenizer...")
             self.tokenizer = load_model_with_retry(BASE_MODEL_NAME, is_tokenizer=True)
             
             # Fallback to alternative model if primary fails
             if self.tokenizer is None:
-                print(f"[WARN] Primary model failed, trying fallback model: {ALTERNATIVE_MODEL_NAME}")
                 self.tokenizer = load_model_with_retry(ALTERNATIVE_MODEL_NAME, is_tokenizer=True)
-                
                 if self.tokenizer is None:
                     raise Exception("Failed to load both primary and fallback tokenizers")
-                else:
-                    print(f"[OK] Successfully loaded fallback tokenizer: {ALTERNATIVE_MODEL_NAME}")
-                    # Update BASE_MODEL_NAME to the working model for MultimodalClassifier
-                    BASE_MODEL_NAME = ALTERNATIVE_MODEL_NAME
-            else:
-                print("[OK] Primary tokenizer loaded successfully")
+                BASE_MODEL_NAME = ALTERNATIVE_MODEL_NAME
             
             # Load encoders
-            encoders_path = os.path.join(TRAINED_DIR, 'label_encoders.json')
-            if os.path.exists(encoders_path):
+            encoders_path = None
+            for file_name in ENCODER_FILE_CANDIDATES:
+                path = os.path.join(TRAINED_DIR, file_name)
+                if os.path.exists(path):
+                    encoders_path = path
+                    break
+
+            if encoders_path and os.path.exists(encoders_path):
                 with open(encoders_path, 'r', encoding='utf-8') as f:
                     enc_map = json.load(f)
                 
@@ -384,46 +484,29 @@ class ModelService:
                     le = LabelEncoder()
                     le.classes_ = np.array(classes, dtype=object)
                     self.encoders[col] = le
-                print("[OK] Encoders loaded")
             else:
-                print("[WARN] No encoders file found, using defaults")
-                # Create default encoders
                 self._create_default_encoders()
             
             # Initialize model
-            num_features = len(NUMERIC_FEATURE_ORDER)
-            print(f"Initializing model with {num_features} additional features...")
+            # Total additional features = numeric (6) + categorical (3) = 9
+            num_features = len(NUMERIC_FEATURE_ORDER) + len(CATEGORICAL_FEATURE_ORDER)
+            print(f"[INFO] Initializing model (features: {num_features}, numeric: {num_numeric})")
             self.model = MultimodalClassifier(
                 BASE_MODEL_NAME,
                 num_features,
-                architecture_type=architecture_type,
                 num_numeric=num_numeric,
                 categorical_cardinalities=categorical_cardinalities,
             )
             self.model.to(self.device)
             
             # Load classifier head weights if available. Support multiple save formats.
-            classifier_path = os.path.join(TRAINED_DIR, 'classifier_head.pt')
-            if os.path.exists(classifier_path):
+            classifier_path = selected_model_path
+            if classifier_path:
                 try:
                     state = torch.load(classifier_path, map_location=self.device)
 
                     # Case A: modern checkpoint with full state_dict
                     if isinstance(state, dict) and 'model_state_dict' in state:
-                        architecture_type = state.get('architecture_type', architecture_type)
-                        num_numeric = int(state.get('num_numeric', num_numeric))
-                        categorical_cardinalities = state.get('categorical_cardinalities', categorical_cardinalities)
-                        if not isinstance(categorical_cardinalities, list):
-                            categorical_cardinalities = None
-
-                        self.model = MultimodalClassifier(
-                            state.get('base_model_name', BASE_MODEL_NAME),
-                            num_features,
-                            architecture_type=architecture_type,
-                            num_numeric=num_numeric,
-                            categorical_cardinalities=categorical_cardinalities,
-                        )
-                        self.model.to(self.device)
                         self.model.load_state_dict(state['model_state_dict'], strict=False)
                         print(" Full model state_dict loaded")
 
@@ -454,31 +537,22 @@ class ModelService:
 
                     # Case C: saved object is a state_dict mapping parameter names -> tensors
                     elif isinstance(state, dict):
-                        # Heuristic: if keys start with 'classifier.' try loading partially
                         keys = list(state.keys())
-                        if any(k.startswith('classifier.') for k in keys) or any('classifier' in k for k in keys):
+                        if any(k.startswith('classifier.') for k in keys) or any('classifier' in k for k in keys) or any(k.startswith('base.') for k in keys):
                             try:
-                                # Load matching keys into model (non-strict)
                                 self.model.load_state_dict(state, strict=False)
-                                print("[OK] Model state_dict loaded (partial)")
                             except Exception as e:
                                 print(f"[WARN] Partial load failed: {e}")
-                        else:
-                            print("[WARN] Unrecognized classifier file contents; skipping load")
 
                     else:
-                        print("[WARN] Classifier file format not recognized; skipping load")
+                        pass  # Unrecognized format, skip
 
                 except Exception as e:
                     print(f"[WARN] Could not load classifier weights: {e}")
-                    print("[WARN] Continuing with initialized classifier. For best accuracy, regenerate trained artifacts.")
-            else:
-                print("[WARN] No classifier weights found, using initialized model")
             
             self.model.eval()
             self._loaded = True
-            print("[OK] Model loaded successfully")
-            print(f"[INFO] Model running on: {self.device}")
+            print(f"[INFO] Running on: {self.device}\n")
             
         except Exception as e:
             print(f"[ERROR] Error loading model: {e}")
@@ -542,38 +616,58 @@ class ModelService:
             return_tensors='pt'
         )
         
+        # Build numeric features (6 features as float)
         numeric_vec = []
         for key in NUMERIC_FEATURE_ORDER:
-            if key.endswith('_encoded'):
-                raw_key = key.replace('_encoded', '')
-                val = numeric_features.get(raw_key)
-
-                if raw_key in self.encoders and isinstance(val, str):
-                    le = self.encoders[raw_key]
-                    try:
-                        # Find the index of the value in the encoder's classes
-                        val = val.lower()
-                        matched = False
-                        for i, cls in enumerate(le.classes_):
-                            if cls.lower() == val:
-                                mapped = int(i)
-                                matched = True
-                                break
-                        if not matched:
-                            mapped = 0
-                    except Exception as e:
-                        mapped = 0
-                    numeric_vec.append(float(mapped))
+            val = numeric_features.get(key, 0.0)
+            numeric_vec.append(float(val))
+        
+        # Apply normalization if available
+        if self.numeric_mean and self.numeric_std:
+            normalized_numeric = []
+            for i, val in enumerate(numeric_vec):
+                if i < len(self.numeric_mean) and i < len(self.numeric_std):
+                    mean = self.numeric_mean[i]
+                    std = self.numeric_std[i]
+                    # Avoid division by zero
+                    if std > 0:
+                        normalized_val = (val - mean) / std
+                    else:
+                        normalized_val = val - mean
+                    normalized_numeric.append(normalized_val)
                 else:
-                    numeric_vec.append(float(val) if val is not None else 0.0)
+                    normalized_numeric.append(val)
+            numeric_vec = normalized_numeric
+        
+        # Build categorical features (3 features as int)
+        categorical_vec = []
+        for key in CATEGORICAL_FEATURE_ORDER:
+            val = numeric_features.get(key)
+            
+            if key in self.encoders and isinstance(val, str):
+                le = self.encoders[key]
+                try:
+                    # Find the index of the value in the encoder's classes
+                    val = val.lower()
+                    mapped = 0
+                    for i, cls in enumerate(le.classes_):
+                        if cls.lower() == val:
+                            mapped = int(i)
+                            break
+                except Exception as e:
+                    mapped = 0
+                categorical_vec.append(mapped)
             else:
-                val = numeric_features.get(key, 0.0)
-                numeric_vec.append(float(val))
+                # If not found or not string, default to 0
+                categorical_vec.append(0)
+        
+        # Combine: [numeric_features (6 floats), categorical_features (3 ints)]
+        combined_features = numeric_vec + categorical_vec
         
         # Move to device
         input_ids = encoding['input_ids'].to(self.device)
         attention_mask = encoding['attention_mask'].to(self.device)
-        additional_features = torch.tensor([numeric_vec], dtype=torch.float).to(self.device)
+        additional_features = torch.tensor([combined_features], dtype=torch.float).to(self.device)
         
         # STEP 2: Use ML model with optimized 60% threshold
         # Let the transformer model analyze the full sentence context

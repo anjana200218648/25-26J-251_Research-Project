@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 # Import our custom modules
 from database import init_db, get_complaints_collection, get_db
 from model_service import ModelService
-from risk_scoring import calculate_risk_score
+from risk_scoring import calculate_risk_score, rule_based_analysis_parent_child, detect_language
 from auth_routes import auth_bp, token_required
 from children_routes import children_bp
 from child_model import Child
@@ -32,14 +32,12 @@ app.register_blueprint(children_bp, url_prefix='/api/children')
 # Initialize model service and load the model
 model_service = ModelService()
 model_service.load_model()
-print("Model loaded successfully")
 
 # Initialize database connection
 try:
     init_db()
-    print("Connected to PostgreSQL")
 except Exception as e:
-    print(f"Database connection error: {e}")
+    print(f"[WARN] Database error: {e}")
 
 @app.route("/")
 def root():
@@ -150,17 +148,62 @@ def submit_complaint():
             print(f"   {key}: {value} (type: {type(value).__name__})")
         print("="*80 + "\n")
         
-        # Get prediction from model
+        # Detect language of complaint text
+        detected_language = detect_language(data['complaint'])
+        print(f"DETECTED LANGUAGE: {detected_language.upper()}")
+        print("="*80 + "\n")
+        
+        # Initialize variables for analysis results
+        sinhala_analysis = None
+        use_sinhala_analysis = False
+        
+        # If Sinhala text detected, use rule-based Sinhala analysis
+        if detected_language == 'sinhala':
+            print("Using Sinhala rule-based analysis...")
+            sinhala_analysis = rule_based_analysis_parent_child(data['complaint'])
+            use_sinhala_analysis = True
+            
+            print("SINHALA ANALYSIS RESULT:")
+            print(f"   Risk Score: {sinhala_analysis['risk_score']}/100")
+            print(f"   Risk Level: {sinhala_analysis['risk_level'].upper()}")
+            print(f"   Risk Categories: {', '.join(sinhala_analysis['risk_categories'])}")
+            print("="*80 + "\n")
+        
+        # Get prediction from ML model (for English or as backup)
         prediction = model_service.predict(data['complaint'], features)
         
-        # Calculate comprehensive risk score
-        risk_score_result = calculate_risk_score(
-            ml_probability=prediction['probability_high_risk'],
-            complaint_text=data['complaint'],
-            hours_per_day=hours_val,
-            previous_risk_level="low",  # Default for new complaints
-            previous_ml_score=None  # No history for first submission
-        )
+        # Use Sinhala analysis if available, otherwise use standard risk scoring
+        if use_sinhala_analysis and sinhala_analysis:
+            # Map Sinhala analysis result to standard format
+            risk_score_result = {
+                "total_score": sinhala_analysis['risk_score'],
+                "risk_level": sinhala_analysis['risk_level'],
+                "score_breakdown": {
+                    "ml_score": 0,  # Not applicable for Sinhala
+                    "rule_score": sinhala_analysis['risk_score'],  # All score from rules
+                    "history_score": 0
+                },
+                "triggered_indicators": [
+                    f"Category: {cat}" for cat in sinhala_analysis.get('risk_categories', [])
+                ],
+                "explanation": sinhala_analysis.get('explanation', ''),
+                "sinhala_analysis": sinhala_analysis,  # Include full Sinhala analysis
+                "language_detected": "sinhala"
+            }
+            
+            # Normalize risk level format
+            if sinhala_analysis['risk_level'] == 'very low':
+                risk_score_result['risk_level'] = 'low'
+        else:
+            # Calculate comprehensive risk score using English analysis
+            risk_score_result = calculate_risk_score(
+                ml_probability=prediction['probability_high_risk'],
+                complaint_text=data['complaint'],
+                hours_per_day=hours_val,
+                previous_risk_level="low",  # Default for new complaints
+                previous_ml_score=None  # No history for first submission
+            )
+            risk_score_result['language_detected'] = 'english'
         
         # Retrieve complaint history for temporal drift analysis
         # Filter by child name and user ID to track same child over time
@@ -250,8 +293,11 @@ def submit_complaint():
             "risk_score": risk_score_result['total_score'],
             "risk_score_breakdown": risk_score_result['score_breakdown'],
             "triggered_indicators": risk_score_result['triggered_indicators'],
-            "risk_explanation": risk_score_result['explanation'],
+            "risk_explanation": risk_score_result.get('explanation', ''),
             "temporal_data": risk_score_result.get('temporal_data', {}),
+            # Add language detection and Sinhala analysis fields
+            "language_detected": risk_score_result.get('language_detected', 'english'),
+            "sinhala_analysis": risk_score_result.get('sinhala_analysis'),  # Full Sinhala analysis if available
             "timestamp": datetime.now()
         }
         

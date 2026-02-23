@@ -319,6 +319,215 @@ def _generate_explanation(total_score: float, risk_level: str, indicators: List[
     
     return explanation
 
+
+def rule_based_analysis_parent_child(text: str) -> Dict:
+    """
+    Rule-based Sinhala complaint analysis with parent/guardian context awareness.
+    Only triggers risk if complaint refers to the child.
+    Provides comprehensive addiction and behavioral risk assessment.
+    """
+    from typing import Any, Dict
+    
+    # Lowercase text for uniform matching
+    text_lower = text.lower()
+
+    # Guardian-child indicator keywords (Sinhala)
+    child_keywords = [
+        'මගේ ළමයා', 'මගේ පුතා', 'මගේ දියණිය', 
+        'ඔහු', 'ඇය', 'ඇයගේ', 'ඔහුගේ', 'child',
+        'ළමයා', 'පුතා', 'දියණිය', 'දරුවා'
+    ]
+
+    # Only analyze if text refers to child
+    child_context = any(kw in text_lower for kw in child_keywords)
+
+    if not child_context:
+        return {
+            "is_appropriate": True,
+            "risk_level": "very low",
+            "risk_score": 0,
+            "max_risk_score": 100.0,
+            "risk_categories": [],
+            "explanation": "විශ්ලේෂණය සඳහා දරුවා සම්බන්ධ අන්තර්ගතයක් අනාවරණය වී නොමැත (No child context detected for analysis)",
+            "confidence": 0.5,
+            "recommendations": ["විශ්ලේෂණය සඳහා පැමිණිල්ල දරුවා සඳහා වන බව සහතික කරන්න (Ensure complaint refers to the child for meaningful analysis)"],
+            "model_used": "rule_based_parent_child",
+            "model_supports_sinhala": True
+        }
+
+    # Risk keyword categories with comprehensive Sinhala keywords
+    risk_keywords = {
+        'gambling': ['සූදු', 'බෙට්', 'බෙටින්', 'ජූදු'],
+        'violence': ['පහර', 'මරණ', 'හිංසා', 'ප්‍රචණ්ඩත්වය'],
+        'sexual': ['ලිංගික', 'අශ්ලීල', 'අසභ්‍ය'],
+        'drugs': ['මත්ද්‍රව්‍ය', 'මත්පැන්', 'මත්', 'බීම'],
+        'bullying': ['වධ', 'පීඩා', 'හිරිහැර', 'තර්ජන'],
+        'suicide': ['සියදිවි', 'මරණය', 'මියයෑම', 'සියදිවි නසා'],
+        'hate': ['වෛරය', 'වෙනස්කම්', 'ද්වේෂය'],
+        'addiction': [
+            'සමාජ මාධ්‍ය', 'ඇල්ම', 'ඔන්ලයින් ගේම්', 'අඩුපාඩු', 
+            'ඇල්ම අසමත්', 'නතර කළ නොහැකි', 'යැපීම', 'අධික භාවිතය',
+            'දිගු වේලා', 'සමාජ', 'මාධ්‍ය', 'ගේම්', 'ඉන්ටර්නෙට්',
+            'ෆේස්බුක්', 'ටික්ටොක්', 'යූටියුබ්', 'පැය ගණනක්'
+        ],
+        'academic': [
+            'පාසැල්', 'ගණිතය', 'පාඩම්', 'හෝම්වර්ක්', 'ග්‍රේඩ්', 
+            'අධ්‍යාපන', 'විභාග', 'ශිෂ්‍ය', 'ඉගෙනීම', 'පන්ති',
+            'ගුරු', 'අධ්‍යයනය', 'ලකුණු', 'කාර්ය සාධනය'
+        ],
+        'sleep': [
+            'නිදා', 'නින්ද', 'මුළු රාත්‍රිය', 'අවදි', 'නොනිදා',
+            'රාත්‍රී', 'අධික රාත්‍රී'
+        ],
+        'emotional': [
+            'කෝපය', 'තරහ', 'චිත්තවේගීය', 'මානසික', 'ආතතිය',
+            'කලබල', 'අධික චිත්තවේගීය', 'හැඟීම්'
+        ],
+        'isolation': [
+            'හුදකලා', 'තනිකම', 'සමාජ විරහිත', 'කතා නොකිරීම',
+            'මිතුරන් නැති', 'වෙන්වීම'
+        ]
+    }
+
+    detected_categories = []
+    total_risk = 0
+    category_details = {}
+
+    # Check each category
+    for category, keywords in risk_keywords.items():
+        for kw in keywords:
+            if kw in text_lower:
+                if category not in detected_categories:
+                    detected_categories.append(category)
+                    
+                    # Assign risk scores based on severity
+                    if category in ['sexual', 'suicide', 'drugs']:
+                        total_risk += 20
+                        category_details[category] = {'severity': 'critical', 'score': 20}
+                    elif category == 'addiction':
+                        total_risk += 20  # High priority for addiction
+                        category_details[category] = {'severity': 'high', 'score': 20}
+                    elif category in ['violence', 'bullying', 'academic']:
+                        total_risk += 15
+                        category_details[category] = {'severity': 'high', 'score': 15}
+                    elif category in ['sleep', 'emotional', 'isolation']:
+                        total_risk += 12
+                        category_details[category] = {'severity': 'medium', 'score': 12}
+                    else:
+                        total_risk += 10
+                        category_details[category] = {'severity': 'medium', 'score': 10}
+                break  # only once per category
+
+    total_risk = min(total_risk, 100)
+
+    # Determine risk level
+    if total_risk >= 60:
+        risk_level = "high"
+        is_appropriate = False
+    elif total_risk >= 30:
+        risk_level = "medium"
+        is_appropriate = False
+    elif total_risk >= 10:
+        risk_level = "low"
+        is_appropriate = True
+    else:
+        risk_level = "very low"
+        is_appropriate = True
+
+    # Generate detailed recommendations in Sinhala and English
+    recommendations = []
+    
+    # Base recommendations
+    recommendations.append("දරුවාගේ ඔන්ලයින් සහ නොබැඳි ක්‍රියාකාරකම් නිරීක්ෂණය කරන්න (Monitor child's online and offline activities)")
+    recommendations.append("දරුවා සමඟ විවෘතව සාකච්ඡා කරන්න (Discuss concerns openly with child)")
+    
+    if 'addiction' in detected_categories:
+        recommendations.insert(0, "🚨 සමාජ මාධ්‍ය ඇල්ම: වහාම මැදිහත්වීම අවශ්‍යයි (Social Media Addiction: Immediate intervention required)")
+        recommendations.append("දෛනික තිර කාලය සීමා කරන්න (Set strict screen time limits)")
+        recommendations.append("විකල්ප ක්‍රියාකාරකම් හඳුන්වා දෙන්න (Introduce alternative activities)")
+        recommendations.append("මානසික සෞඛ්‍ය විශේෂඥයෙකු හමුවන්න (Consult a mental health professional)")
+    
+    if 'academic' in detected_categories:
+        recommendations.append("අධ්‍යාපන සහාය සඳහා ගුරුවරුන් හමුවන්න (Meet with teachers for academic support)")
+        recommendations.append("ගෙදර වැඩ සඳහා කාලය වෙන් කරන්න (Allocate specific time for homework)")
+    
+    if 'sleep' in detected_categories:
+        recommendations.append("නිදා යාමට පැය 2 කට පෙර උපාංග භාවිතය තහනම් කරන්න (Ban device use 2 hours before bedtime)")
+        recommendations.append("නිතිපතා නින්ද කාලසටහනක් තබන්න (Maintain a regular sleep schedule)")
+    
+    if 'emotional' in detected_categories or 'isolation' in detected_categories:
+        recommendations.append("සමාජ කුසලතා සඳහා උපදේශනය ලබා ගන්න (Seek counseling for social skills)")
+        recommendations.append("පවුල් ක්‍රියාකාරකම් සංවිධානය කරන්න (Organize family activities)")
+    
+    if total_risk >= 60:
+        recommendations.insert(0, "🚨 හදිසි ක්‍රියාමාර්ග අවශ්‍යයි (URGENT ACTION REQUIRED)")
+        recommendations.append("වහාම වෘත්තීය උපදේශනය හෝ මානසික සෞඛ්‍ය සහාය ලබා ගන්න (Seek professional counseling immediately)")
+    
+    if not recommendations:
+        recommendations.append("දිගටම නිරීක්ෂණය කරන්න (Continue monitoring)")
+
+    # Generate detailed explanation in both languages
+    explanation_parts = [
+        f"අවදානම් ලකුණු: {total_risk}/100 (Risk Score: {total_risk}/100)",
+        f"අවදානම් මට්ටම: {risk_level.upper()} (Risk Level: {risk_level.upper()})"
+    ]
+    
+    if detected_categories:
+        categories_si = {
+            'addiction': 'ඇල්ම (Addiction)',
+            'academic': 'අධ්‍යාපනික (Academic)',
+            'sleep': 'නින්ද ගැටළු (Sleep Issues)',
+            'emotional': 'චිත්තවේගීය (Emotional)',
+            'isolation': 'හුදකලාව (Isolation)',
+            'bullying': 'වධ හිංසා (Bullying)',
+            'violence': 'ප්‍රචණ්ඩත්වය (Violence)',
+            'sexual': 'ලිංගික අන්තර්ගතය (Sexual Content)',
+            'drugs': 'මත්ද්‍රව්‍ය (Drugs)',
+            'suicide': 'සියදිවි නසා ගැනීම (Suicide)',
+            'hate': 'වෛරය (Hate)'
+        }
+        
+        category_labels = [categories_si.get(cat, cat) for cat in detected_categories]
+        explanation_parts.append(f"\nඅනාවරණය වූ අවදානම්:\n(Detected Risks):\n" + "\n".join([f"• {cat}" for cat in category_labels]))
+        
+        # Add severity breakdown
+        if category_details:
+            explanation_parts.append("\nතීව්‍රතා විස්තර (Severity Breakdown):")
+            for cat, details in category_details.items():
+                cat_label = categories_si.get(cat, cat)
+                explanation_parts.append(f"  {cat_label}: {details['score']} points ({details['severity']})")
+
+    explanation = "\n".join(explanation_parts)
+
+    return {
+        "is_appropriate": is_appropriate,
+        "risk_level": risk_level,
+        "risk_score": total_risk,
+        "max_risk_score": 100.0,
+        "risk_categories": detected_categories,
+        "category_details": category_details,
+        "explanation": explanation,
+        "confidence": 0.85,  # High confidence for rule-based Sinhala analysis
+        "recommendations": recommendations,
+        "model_used": "rule_based_parent_child",
+        "model_supports_sinhala": True,
+        "language_detected": "sinhala"
+    }
+
+
+def detect_language(text: str) -> str:
+    """
+    Detect if text contains Sinhala characters.
+    Returns 'sinhala' if Sinhala characters detected, otherwise 'english'.
+    """
+    import re
+    # Sinhala Unicode range: 0D80–0DFF
+    sinhala_pattern = re.compile(r'[\u0D80-\u0DFF]')
+    if sinhala_pattern.search(text):
+        return 'sinhala'
+    return 'english'
+
+
 # EXAMPLE USAGE / TESTING
 
 if __name__ == "__main__":

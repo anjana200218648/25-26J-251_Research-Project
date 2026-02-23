@@ -35,9 +35,6 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg2://postgres:9590952Kpg@localhost:5432/user_complaints"
 )
 
-print("Loading PostgreSQL config:")
-print(f"   DATABASE_URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"   DATABASE_URL: {DATABASE_URL}")
-
 # SQLAlchemy globals
 engine = None  # type: ignore
 SessionLocal: Optional[sessionmaker] = None
@@ -347,16 +344,14 @@ def init_db():
     global engine, SessionLocal, _db_session, complaints_repo
 
     if engine is not None:
-        print("Database already initialized, skipping...")
         return
 
     try:
-        print("Attempting to connect to PostgreSQL...")
         engine = create_engine(DATABASE_URL, pool_pre_ping=True)
         SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
         # Test connection
         with engine.connect() as conn:
-            conn.execute(func.now().select())  # lightweight ping via SELECT now()
+            conn.execute(func.now().select())
 
         # Create schema
         Base.metadata.create_all(engine)
@@ -365,11 +360,9 @@ def init_db():
         global users_repo, children_repo
         users_repo = UsersRepo(SessionLocal)
         children_repo = ChildrenRepo(SessionLocal)
-        print("Successfully connected to PostgreSQL and ensured schema.")
+        print("[INFO] PostgreSQL connected")
     except Exception as e:
-        print(f"Failed to connect to PostgreSQL: {e}")
-        print("Server will start but database features will not be available")
-        print("Please check your DATABASE_URL and network access")
+        print(f"[WARN] PostgreSQL failed: {e}")
 
 def get_database():
     """Return SQLAlchemy engine (initialize if needed)."""

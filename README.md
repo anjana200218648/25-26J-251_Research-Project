@@ -1,4 +1,86 @@
+# SafeKid-Scan Research Project
+# Child Social Media Risk Assessment System
+
+## 📁 Project Structure 
+
+```
+25-26J-251_Research-Project/
+├── backend/                  # Flask backend API
+│   ├── app.py               # Main application
+│   ├── model_service.py     # ML model inference
+│   ├── risk_scoring.py      # Risk analysis (English + Sinhala)
+│   ├── temporal_drift.py    # Temporal trend analysis
+│   └── trained_model/       # Pre-trained model files
+├── safekid-scan/            # React frontend
+│   ├── src/
+│   │   ├── pages/          # Main pages
+│   │   ├── components/     # Reusable components
+│   │   └── contexts/       # Language context
+│   └── package.json
+├── ml_training/             # ML model training scripts
+│   ├── train_model.py      # Main training script
+│   ├── README.md           # Detailed training guide
+│   ├── QUICKSTART.md       # Quick start guide
+│   └── sample_training_data.csv  # Dataset template
+└── README.md               # This file
+```
+
+---
+
+## 🚀 Getting Started / ආරම්භ කිරීම
+
+### 1. Backend Setup
+
+```bash
+cd backend
+pip install -r requirements.txt
+python app.py
+```
+
+### 2. Frontend Setup
+
+```bash
+cd safekid-scan
+npm install
+npm run dev
+```
+
+### 3. Access Application
+
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:8000
+
+---
+
+## 🎯 Key Features / ප්‍රධාන විශේෂාංග
+
+### 1. **Multilingual Support / බහු භාෂා සහාය**
+   - English / ඉංග්‍රීසි
+   - Sinhala / සිංහල
+   - Language toggle in navbar
+
+### 2. **Sinhala Text Analysis / සිංහල පාඨ විශ්ලේෂණය**
+   - Rule-based analysis for Sinhala complaints
+   - 12 risk categories (addiction, academic, sleep, etc.)
+   - Bilingual recommendations
+
+### 3. **ML Model Training / ML ආකෘති පුහුණු කිරීම**
+   - Multimodal deep learning (RoBERTa + MLP + Embeddings)
+   - Training scripts in `ml_training/` directory
+   - Google Colab compatible
+
+### 4. **Risk Assessment / අවදානම් තක්සේරුව**
+   - Combined ML + Rule-based analysis
+   - Temporal drift detection
+   - Comprehensive scoring (0-100)
+   - Three-level classification (Low/Medium/High)
+
+---
+
+## 📊 System Architecture / පද්ධති ගෘහනිර්මාණය
+
 # Research
+
  """
         IMPROVED HYBRID PREDICTION with balanced threshold.
         

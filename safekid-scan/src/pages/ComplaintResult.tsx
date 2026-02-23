@@ -1,3 +1,4 @@
+import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,7 @@ import autoTable from 'jspdf-autotable';
 import { useEffect, useState, useCallback } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -67,6 +69,29 @@ interface ComplaintResult {
   triggered_indicators?: string[];
   risk_explanation?: string;
   temporal_data?: TemporalData;
+  // Sinhala analysis fields
+  language_detected?: string;
+  sinhala_analysis?: SinhalaAnalysis;
+}
+
+interface SinhalaAnalysis {
+  is_appropriate: boolean;
+  risk_level: string;
+  risk_score: number;
+  max_risk_score: number;
+  risk_categories: string[];
+  category_details?: {
+    [key: string]: {
+      severity: string;
+      score: number;
+    };
+  };
+  explanation: string;
+  confidence: number;
+  recommendations: string[];
+  model_used: string;
+  model_supports_sinhala: boolean;
+  language_detected: string;
 }
 
 interface TemporalTrendData {
@@ -325,6 +350,7 @@ const generatePDFReport = (result: ComplaintResult) => {
 const ComplaintResult = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { language } = useLanguage();
   const result: ComplaintResult | undefined = location.state?.result;
   const [latestResult, setLatestResult] = useState<ComplaintResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -387,9 +413,20 @@ const ComplaintResult = () => {
     if (!result) {
       fetchLatestComplaint();
     }
-    // Set default expanded sections
-    setExpandedSections(new Set(['child-info', 'usage-info', 'temporal-drift', 'complaint-details']));
   }, [result, fetchLatestComplaint]);
+
+  // Set default expanded sections based on UI language
+  useEffect(() => {
+    const defaultSections = new Set(['child-info', 'usage-info', 'temporal-drift', 'complaint-details']);
+    
+    // If Sinhala UI language and Sinhala analysis is available, expand it by default
+    const currentResult = result || latestResult;
+    if (language === 'si' && currentResult?.sinhala_analysis) {
+      defaultSections.add('sinhala-analysis');
+    }
+    
+    setExpandedSections(defaultSections);
+  }, [language, result, latestResult]);
 
   // Use the passed result or the fetched latest result
   const displayResult = result || latestResult;
@@ -558,6 +595,148 @@ const ComplaintResult = () => {
               </div>
             </div>
           </Card>
+
+          {/* Sinhala Analysis Results - Show when UI language is Sinhala and analysis is available */}
+          {language === 'si' && displayResult.sinhala_analysis && (
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+              <button
+                onClick={() => toggleSection('sinhala-analysis')}
+                className="w-full p-6 text-left flex items-center justify-between hover:bg-white/30 rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-gradient-to-r from-purple-500 to-pink-500 p-3">
+                    <Brain className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                      සිංහල විශ්ලේෂණය (Sinhala Analysis)
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-200">
+                        {displayResult.sinhala_analysis.confidence * 100}% confidence
+                      </Badge>
+                    </h3>
+                    <p className="text-sm text-gray-600">Rule-based analysis for Sinhala complaint text</p>
+                  </div>
+                </div>
+                {expandedSections.has('sinhala-analysis') ?
+                  <ChevronUp className="h-5 w-5 text-gray-500" /> :
+                  <ChevronDown className="h-5 w-5 text-gray-500" />
+                }
+              </button>
+
+              {expandedSections.has('sinhala-analysis') && (
+                <div className="px-6 pb-6 space-y-6">
+                  {/* Risk Score Breakdown */}
+                  <div className="bg-white/70 rounded-xl p-6 border border-purple-100">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Target className="h-5 w-5 text-purple-600" />
+                      අවදානම් ලකුණු (Risk Score)
+                    </h4>
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <Progress 
+                          value={displayResult.sinhala_analysis.risk_score} 
+                          className="h-3"
+                        />
+                      </div>
+                      <div className={`text-3xl font-bold ${getRiskColor(displayResult.sinhala_analysis.risk_level)}`}>
+                        {displayResult.sinhala_analysis.risk_score}/100
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600">
+                      {displayResult.sinhala_analysis.explanation}
+                    </p>
+                  </div>
+
+                  {/* Risk Categories Detected */}
+                  {displayResult.sinhala_analysis.risk_categories && displayResult.sinhala_analysis.risk_categories.length > 0 && (
+                    <div className="bg-white/70 rounded-xl p-6 border border-purple-100">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-orange-600" />
+                        අනාවරණය වූ අවදානම් කාණ්ඩ (Detected Risk Categories)
+                      </h4>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {displayResult.sinhala_analysis.risk_categories.map((category, idx) => {
+                          const categoryDetails = displayResult.sinhala_analysis?.category_details?.[category];
+                          const categoryLabels: { [key: string]: string } = {
+                            'addiction': '🎮 ඇල්ම (Addiction)',
+                            'academic': '📚 අධ්‍යාපනික (Academic)',
+                            'sleep': '😴 නින්ද ගැටළු (Sleep Issues)',
+                            'emotional': '😔 චිත්තවේගීය (Emotional)',
+                            'isolation': '🚶 හුදකලාව (Isolation)',
+                            'bullying': '😠 වධ හිංසා (Bullying)',
+                            'violence': '⚠️ ප්‍රචණ්ඩත්වය (Violence)',
+                            'sexual': '🔞 ලිංගික අන්තර්ගතය (Sexual Content)',
+                            'drugs': '💊 මත්ද්‍රව්‍ය (Drugs)',
+                            'suicide': '☠️ සියදිවි නසා ගැනීම (Suicide)',
+                            'hate': '💔 වෛරය (Hate)',
+                            'gambling': '🎰 සූදු (Gambling)'
+                          };
+                          
+                          const severityColors: { [key: string]: string } = {
+                            'critical': 'border-red-300 bg-red-50',
+                            'high': 'border-orange-300 bg-orange-50',
+                            'medium': 'border-yellow-300 bg-yellow-50',
+                            'low': 'border-blue-300 bg-blue-50'
+                          };
+                          
+                          return (
+                            <div 
+                              key={idx}
+                              className={`p-4 rounded-lg border-2 ${severityColors[categoryDetails?.severity || 'medium']}`}
+                            >
+                              <div className="font-semibold text-gray-900">
+                                {categoryLabels[category] || category}
+                              </div>
+                              {categoryDetails && (
+                                <div className="text-sm text-gray-600 mt-1">
+                                  Score: {categoryDetails.score} points | Severity: {categoryDetails.severity}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommendations for Sinhala Analysis */}
+                  {displayResult.sinhala_analysis.recommendations && displayResult.sinhala_analysis.recommendations.length > 0 && (
+                    <div className="bg-white/70 rounded-xl p-6 border border-purple-100">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Heart className="h-5 w-5 text-pink-600" />
+                        නිර්දේශ (Recommendations)
+                      </h4>
+                      <ul className="space-y-3">
+                        {displayResult.sinhala_analysis.recommendations.map((rec, idx) => (
+                          <li key={idx} className="flex items-start gap-3 text-gray-700">
+                            <span className={`mt-1 ${rec.includes('🚨') ? 'text-red-500' : 'text-purple-500'} font-bold`}>
+                              {rec.includes('🚨') ? '🚨' : '•'}
+                            </span>
+                            <span className="flex-1">{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Model Information */}
+                  <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-4 border border-purple-200">
+                    <div className="flex items-center gap-3 text-sm">
+                      <Info className="h-4 w-4 text-purple-600" />
+                      <span className="text-gray-700">
+                        <strong>විශ්ලේෂණ ආකෘතිය (Analysis Model):</strong> {displayResult.sinhala_analysis.model_used} 
+                        {displayResult.sinhala_analysis.model_supports_sinhala && (
+                          <Badge variant="secondary" className="ml-2 bg-green-100 text-green-700">
+                            සිංහල සහාය ඇත (Sinhala Supported)
+                          </Badge>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* Assessment Details - Expandable Sections */}
           <div className="space-y-4">
