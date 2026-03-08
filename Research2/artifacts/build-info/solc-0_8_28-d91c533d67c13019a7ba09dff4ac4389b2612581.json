@@ -1,0 +1,39 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-d91c533d67c13019a7ba09dff4ac4389b2612581",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/ReportNotary.sol": "project/contracts/ReportNotary.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "istanbul",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/ReportNotary.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.28;\r\n\r\ncontract ReportNotary {\r\n    mapping(uint256 => bytes32) private reportHashes;\r\n\r\n    event ReportHashStored(uint256 indexed reportId, bytes32 pdfHash);\r\n\r\n    function storeReportHash(uint256 reportId, bytes32 pdfHash) external returns (bool) {\r\n        reportHashes[reportId] = pdfHash;\r\n        emit ReportHashStored(reportId, pdfHash);\r\n        return true;\r\n    }\r\n\r\n    function getReportHash(uint256 reportId) external view returns (bytes32) {\r\n        return reportHashes[reportId];\r\n    }\r\n}\r\n\r\n"
+      }
+    }
+  }
+}

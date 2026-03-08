@@ -1,0 +1,138 @@
+.analysis-results {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.results-header {
+  text-align: center;
+  background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%);
+  border-left: 4px solid #48bb78;
+}
+
+.success-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.results-header h2 {
+  color: #22543d;
+  margin-bottom: 0.5rem;
+}
+
+.results-header p {
+  color: #276749;
+}
+
+.result-item.highlight {
+  background: linear-gradient(135deg, #e6fffa 0%, #b2f5ea 100%);
+  border-left: 4px solid #38b2ac;
+}
+
+.result-item.suspended {
+  background: linear-gradient(135deg, #fed7d7 0%, #feb2b2 100%);
+  border-left: 4px solid #f56565;
+}
+
+.suspended-text {
+  color: #c53030 !important;
+}
+
+.result-sublabel {
+  font-size: 0.75rem;
+  color: #a0aec0;
+  margin-top: 0.25rem;
+}
+
+.conflict-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin: 1.5rem 0;
+}
+
+.conflict-badge {
+  background: #f7fafc;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border-left: 4px solid;
+  text-align: center;
+}
+
+.conflict-label {
+  font-size: 0.875rem;
+  color: #718096;
+  margin-bottom: 0.5rem;
+}
+
+.conflict-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.confidence-meter {
+  background: #f7fafc;
+  padding: 1.5rem;
+  border-radius: 12px;
+}
+
+.confidence-label {
+  font-size: 0.875rem;
+  color: #2d3748;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.confidence-bar {
+  width: 100%;
+  height: 24px;
+  background: #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 12px;
+  transition: width 0.5s ease;
+}
+
+.summary-text {
+  background: #f7fafc;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+  line-height: 1.8;
+  color: #2d3748;
+  font-size: 1rem;
+}
+
+.actions-card {
+  background: #f7fafc;
+  border: 2px dashed #cbd5e0;
+}
+
+.actions-card .actions {
+  justify-content: center;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .conflict-info {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.report-text pre {
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  background: #f7fafc;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+

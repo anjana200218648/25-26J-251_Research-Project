@@ -1,0 +1,13 @@
+{
+  "include": [
+    "src",
+    "tests"
+  ],
+  "extraPaths": [
+    "src"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows"
+}
