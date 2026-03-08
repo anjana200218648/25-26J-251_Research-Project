@@ -1,0 +1,46 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "reportId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "pdfHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "storeReportHash",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "reportId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getReportHash",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
+
